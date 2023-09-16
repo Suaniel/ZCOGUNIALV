@@ -1,0 +1,256 @@
+*&---------------------------------------------------------------------*
+*& Report zcogunialv
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zcogunialv.
+
+*** DATA TYPE DEFINITIONS FOR OUR 3 TABLES (STUDENT, CLASS, AND REGISTER) ***
+TYPES : BEGIN OF TY_ZCOGUNICLASS,
+          name           TYPE ZCOGUNICLASS-name,
+          class_section  TYPE ZCOGUNICLASS-class_section,
+          professor      TYPE ZCOGUNICLASS-professor,
+          start_time     TYPE ZCOGUNICLASS-start_time,
+          end_time       TYPE ZCOGUNICLASS-end_time,
+          week_day       TYPE ZCOGUNICLASS-week_day.
+        TYPES END OF TY_ZCOGUNICLASS.
+
+TYPES : BEGIN OF TY_ZCOGUNISTUDENTS,
+          student_num TYPE ZCOGUNISTUDENTS-student_num,
+          age         TYPE ZCOGUNISTUDENTS-age,
+          gender      TYPE ZCOGUNISTUDENTS-gender,
+          residency   TYPE ZCOGUNISTUDENTS-residency,
+          name        TYPE ZCOGUNISTUDENTS-name,
+          last_name   TYPE ZCOGUNISTUDENTS-last_name.
+        TYPES END OF TY_ZCOGUNISTUDENTS.
+
+TYPES : BEGIN OF TY_ZCUREGIST,
+          className TYPE ZCUREGIST-classes,
+          classSection TYPE ZCUREGIST-class_section,
+          sNUM TYPE ZCUREGIST-student_num.
+        TYPES END OF TY_ZCUREGIST.
+
+*** INTERAL TABLES AND WORK AREA DEFINITIONS ***
+DATA : IT_ZCOGUNICLASS    TYPE STANDARD TABLE OF TY_ZCOGUNICLASS,
+       WA_ZCOGUNICLASS    TYPE TY_ZCOGUNICLASS,
+       IT_ZCOGUNISTUDENTS TYPE STANDARD TABLE OF TY_ZCOGUNISTUDENTS,
+       WA_ZCOGUNISTUDENTS TYPE TY_ZCOGUNISTUDENTS,
+       LT_ZCUREGIST       TYPE STANDARD TABLE OF TY_ZCUREGIST,
+       IT_FCAT            TYPE LVC_T_FCAT,
+       IT_FCAT1           TYPE LVC_T_FCAT.
+
+*** OBJECTS TO GET/SET VARIABLES INTO OUR METHODS FOR OUR FACTORY METHOD ***
+DATA : lo_alv       TYPE REF TO cl_salv_table,
+       lo_functions TYPE REF TO cl_salv_functions_list,
+       lo_display   TYPE REF TO cl_salv_display_settings,
+       lo_layout    TYPE REF TO cl_salv_layout,
+       lo_events    TYPE REF TO cl_salv_events_table,
+       lo_msg       TYPE REF TO cx_salv_msg,
+       lo_selection TYPE REF TO cl_salv_selections,
+       lv_string    TYPE string,
+       ls_key       TYPE salv_s_layout_key.
+
+
+*** CLASS DEFINITION AND IMPLEMENTATION TO HANDLE OUR EVENTS ***
+CLASS LCL_HOTSPOT_HANDLER DEFINITION.
+  PUBLIC SECTION.
+* We call the event method, as well as import a parameter that lets us take which column triggers the event
+    CLASS-METHODS :
+      HANDLE_HOTSPOT_CLICK FOR EVENT LINK_CLICK OF CL_SALV_EVENTS_TABLE IMPORTING column row,
+      GENERATE_OUTPUT CHANGING lt_name TYPE any table.
+ENDCLASS.
+
+CLASS LCL_HOTSPOT_HANDLER IMPLEMENTATION. "currenly doesnt let me take the value of which field is clicked on
+  METHOD HANDLE_HOTSPOT_CLICK.
+    CASE column.
+      WHEN 'NAME'.
+        IF SY-SUBRC = 0.
+          " Read the value in which the name matches the selected name from the class table to the work area
+          CLEAR WA_ZCOGUNICLASS.
+          READ TABLE IT_ZCOGUNICLASS INTO WA_ZCOGUNICLASS INDEX row.
+          " Get Student Data in relation to the class registered if available
+          PERFORM GET_STUDENT.
+          IF lt_zcuregist IS NOT INITIAL.
+            "Display Student Data
+            CALL METHOD GENERATE_OUTPUT( CHANGING lt_name = lt_zcuregist ).
+          ELSE.
+            MESSAGE 'NO CLASS TO STUDENT DATA WAS RETRIEVED' TYPE 'I'.
+          ENDIF.
+        ENDIF.
+      WHEN 'CLASSES'.
+        CALL METHOD GENERATE_OUTPUT( CHANGING lt_name = lt_zcuregist ).
+      WHEN 'STUDENT_NUM'.
+        CALL METHOD GENERATE_OUTPUT( CHANGING lt_name = lt_zcuregist ).
+      WHEN OTHERS.
+        "MESSAGE 'Double Click event: triggered???' TYPE 'I'.
+    ENDCASE.
+  ENDMETHOD.
+
+  METHOD GENERATE_OUTPUT.
+    TRY.
+      CALL METHOD cl_salv_table=>factory
+        IMPORTING
+          r_salv_table   = lo_alv
+        CHANGING
+          t_table        = lt_name
+        .
+      CATCH cx_salv_msg.
+    ENDTRY.
+
+    lo_functions = lo_alv->get_functions( ).
+    lo_functions->set_all( abap_true ).
+    lo_alv->display( ).
+  ENDMETHOD.
+ENDCLASS.
+
+
+
+*** MAIN PROGRAM. FUNCTIONALITY AND PERFORMS ***
+START-OF-SELECTION.
+
+PERFORM generate_fcat.
+
+* Get Data from Class Table
+PERFORM GET_COGUNICLASS.
+
+*DEFINE A CALL METHOD TO THE FACTORY METHOD, CREATING THE ALV GRID'S FIRST INSTANCE
+TRY.
+  CALL METHOD cl_salv_table=>factory
+*    EXPORTING
+*      list_display   = IF_SALV_C_BOOL_SAP=>FALSE
+*      r_container    =
+*      container_name =
+    IMPORTING
+      r_salv_table   = lo_alv
+    CHANGING
+      t_table        = it_zcoguniclass
+      .
+    CATCH cx_salv_msg.
+ENDTRY.
+
+* Register the Handler for HotSpot Event, as well as assigning this event to the local event object
+PERFORM REGISTERHANDLER.
+
+PERFORM get_alv_fcat.
+
+lo_functions = lo_alv->get_functions( ).
+lo_functions->set_all( abap_true ).
+lo_alv->display( ).
+
+*** MAIN IMPLEMENTATION DEFINITIONS ***
+
+FORM GET_COGUNICLASS.
+  SELECT NAME CLASS_SECTION PROFESSOR START_TIME END_TIME WEEK_DAY FROM ZCOGUNICLASS INTO TABLE IT_ZCOGUNICLASS.
+ENDFORM.
+
+FORM registerhandler . " check if I have to create the object of the class (OB1)
+  lo_events = lo_alv->get_event( ).
+  SET HANDLER LCL_HOTSPOT_HANDLER=>HANDLE_HOTSPOT_CLICK FOR lo_events. "first object calls the method and the second raises the event
+ENDFORM.
+
+FORM get_student.
+  SELECT a~NAME, a~CLASS_SECTION, b~STUDENT_NUM
+    FROM ZCOGUNISTUDENTS AS b INNER JOIN ZCUREGIST AS c ON b~STUDENT_NUM = c~STUDENT_NUM
+                              INNER JOIN ZCOGUNICLASS AS a ON a~NAME = c~CLASSES AND
+                                                              a~CLASS_SECTION = c~CLASS_SECTION
+      INTO TABLE @lt_zcuregist WHERE a~NAME = @WA_ZCOGUNICLASS-name.
+ENDFORM.
+
+*** GENERATE CUSTOM FIELD CATALOGS FOR THE INTERNAL TABLES ***
+
+FORM generate_fcat.
+* Field catalog it_fcat1 in association with the table zcuregist
+  it_fcat1[] = VALUE lvc_t_fcat(
+    ( Fieldname = 'Classes'
+      ref_table = 'Zcuregist'
+      coltext = 'Classes'
+      col_pos = 1
+      Outputlen = 40
+      HOTSPOT = 'X'
+    )
+    ( FIELDNAME = 'CLASS_SECTION'
+      ref_table = 'ZCUREGIST'
+      COLTEXT = 'SECTION'
+      COL_POS = 2
+      OUTPUTLEN = 3
+      HOTSPOT = 'X'
+    )
+    ( FIELDNAME = 'STUDENT_NUM'
+      ref_table = 'ZCUREGIST'
+      COLTEXT = 'STUDENT NUM'
+      COL_POS = 3
+      OUTPUTLEN = 9
+      HOTSPOT = 'X'
+    )
+  ).
+* Field Catalog IT_FCAT in association with the table ZCOGUNICLASS
+   it_fcat[] = VALUE lvc_t_fcat(
+    ( FIELDNAME = 'NAME'
+      ref_table = 'ZCOGUNICLASS'
+      COLTEXT = 'NAME'
+      COL_POS = 1
+      OUTPUTLEN = 40
+      HOTSPOT = 'X'
+    )
+    ( FIELDNAME = 'CLASS_SECTION'
+      ref_table = 'ZCOGUNICLASS'
+      COLTEXT = 'SECTION'
+      COL_POS = 2
+      OUTPUTLEN = 3
+      HOTSPOT = 'X'
+    )
+    ( FIELDNAME = 'PROFESSOR'
+      ref_table = 'ZCOGUNICLASS'
+      COLTEXT = 'PROFESSOR'
+      COL_POS = 3
+      OUTPUTLEN = 20
+      HOTSPOT = 'X'
+    )
+    ( FIELDNAME = 'START_TIME'
+      ref_table = 'ZCOGUNICLASS'
+      COLTEXT = 'START TIME'
+      COL_POS = 4
+      OUTPUTLEN = 6
+      HOTSPOT = 'X'
+    )
+    ( FIELDNAME = 'END_TIME'
+      ref_table = 'ZCOGUNICLASS'
+      COLTEXT = 'END TIME'
+      COL_POS = 5
+      OUTPUTLEN = 6
+      HOTSPOT = 'X'
+    )
+    ( FIELDNAME = 'WEEK_DAY'
+      ref_table = 'ZCOGUNICLASS'
+      COLTEXT = 'WEEK DAY'
+      COL_POS = 6
+      OUTPUTLEN = 5
+      HOTSPOT = 'X'
+    )
+   ).
+ENDFORM.
+
+FORM get_alv_fcat .
+  DATA :  lo_columns  TYPE REF TO cl_salv_columns_table,
+          lo_column   TYPE REF TO cl_salv_column.
+*  DATA :  lo_typedscr  TYPE REF TO cl_abap_typedescr,
+*          lo_strcdscr  TYPE REF TO cl_abap_structdescr,
+*          lo_tabledscr TYPE REF TO cl_abap_tabledescr.
+
+  LOOP AT it_fcat INTO DATA(wa_fcat).
+    lo_columns = lo_alv->get_columns( ).
+    TRY.
+      lo_column = lo_columns->get_column( WA_FCAT-fieldname ).
+      lo_column->set_long_text( wa_fcat-coltext ).
+      lo_column->set_output_length( wa_fcat-outputlen ).
+      CATCH cx_salv_not_found.
+    ENDTRY.
+  ENDLOOP.
+
+
+*  DATA(factory_fcat) = lo_metadata->get_lvc_fieldcatalog(
+*    r_columns   = lo_alv->get_columns ()
+*    r_aggreation
+*
+*  ).
+ENDFORM.
