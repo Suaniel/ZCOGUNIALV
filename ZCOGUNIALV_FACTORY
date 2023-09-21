@@ -38,7 +38,7 @@ DATA : IT_ZCOGUNICLASS    TYPE STANDARD TABLE OF TY_ZCOGUNICLASS,
        WA_ZCOGUNICLASS    TYPE TY_ZCOGUNICLASS,
        IT_ZCOGUNISTUDENTS TYPE STANDARD TABLE OF TY_ZCOGUNISTUDENTS,
        WA_ZCOGUNISTUDENTS TYPE TY_ZCOGUNISTUDENTS,
-       LT_ZCUREGIST       TYPE STANDARD TABLE OF TY_ZCUREGIST,
+       IT_ZCUREGIST       TYPE STANDARD TABLE OF TY_ZCUREGIST,
        WA_ZCUREGIST       TYPE TY_ZCUREGIST,
        IT_FCAT            TYPE LVC_T_FCAT,
        IT_FCAT1           TYPE LVC_T_FCAT,
@@ -66,7 +66,7 @@ CLASS LCL_HOTSPOT_HANDLER DEFINITION.
 * We call the event method, as well as import a parameter that lets us take which column triggers the event
     CLASS-METHODS :
       HANDLE_HOTSPOT_CLICK FOR EVENT LINK_CLICK OF CL_SALV_EVENTS_TABLE IMPORTING row column,
-      GENERATE_OUTPUT CHANGING lt_name TYPE any table.
+      GENERATE_OUTPUT IMPORTING lv_fcat TYPE lvc_t_fcat CHANGING lt_name TYPE any table.
 ENDCLASS.
 DATA lo_event_handler TYPE REF TO LCL_HOTSPOT_HANDLER.
 
@@ -80,12 +80,9 @@ CLASS LCL_HOTSPOT_HANDLER IMPLEMENTATION. " currenly doesnt let me take the valu
           READ TABLE IT_ZCOGUNICLASS INTO WA_ZCOGUNICLASS INDEX row.
           " Get Student Data in relation to the class registered if available
           PERFORM GET_STUDENT.
-          IF lt_zcuregist IS NOT INITIAL.
-            lo_alv->refresh( refresh_mode = if_salv_c_refresh=>full ).
+          IF IT_ZCUREGIST IS NOT INITIAL.
             "Display Student Data
-            CALL METHOD GENERATE_OUTPUT( CHANGING lt_name = lt_zcuregist ).
-            PERFORM get_alv_fcat TABLES it_fcat1.
-            lo_alv->display( ).
+            CALL METHOD GENERATE_OUTPUT( EXPORTING lv_fcat = it_fcat1 CHANGING lt_name = IT_ZCUREGIST ).
           ELSE.
             MESSAGE 'NO CLASS TO STUDENT DATA WAS RETRIEVED' TYPE 'I'.
           ENDIF.
@@ -93,14 +90,11 @@ CLASS LCL_HOTSPOT_HANDLER IMPLEMENTATION. " currenly doesnt let me take the valu
       WHEN 'SNUM'.
         IF SY-SUBRC = 0.
           CLEAR wa_zcuregist.
-          READ TABLE lt_zcuregist INTO wa_zcuregist INDEX row." READ TABLE INTO THE WORK ARE WITH SPECIFIC INDEX SELECTED AT SELECTION SCREEN
+          READ TABLE IT_ZCUREGIST INTO wa_zcuregist INDEX row." READ TABLE INTO THE WORK ARE WITH SPECIFIC INDEX SELECTED AT SELECTION SCREEN
           PERFORM get_student_info.
           IF it_zcogunistudents IS NOT INITIAL." CHECK IF THE TABLE IS NOT INITIAL.
-            lo_alv->refresh( refresh_mode = if_salv_c_refresh=>full ).
             "Display Student Data
-            CALL METHOD GENERATE_OUTPUT( CHANGING lt_name = it_zcogunistudents ).
-            PERFORM get_alv_fcat TABLES it_fcat2.
-            lo_alv->display( ).
+            CALL METHOD GENERATE_OUTPUT( EXPORTING lv_fcat = it_fcat2 CHANGING lt_name = it_zcogunistudents ).
           ELSE.
             MESSAGE 'NO STUDENT INFORMATION DATA WAS RETRIEVED' TYPE 'I'.
           ENDIF.
@@ -121,6 +115,8 @@ CLASS LCL_HOTSPOT_HANDLER IMPLEMENTATION. " currenly doesnt let me take the valu
       CATCH cx_salv_msg.
     ENDTRY.
 
+    PERFORM get_alv_fcat TABLES lv_fcat.
+
     lo_functions = lo_alv->get_functions( ).
     lo_functions->set_all( abap_true ).
     lo_alv->set_screen_status(
@@ -128,10 +124,20 @@ CLASS LCL_HOTSPOT_HANDLER IMPLEMENTATION. " currenly doesnt let me take the valu
       report        = sy-repid
 *      set_functions = lo_alv->c_functions_all
       ).
+*    ls_key-report = sy-cprog.
+*    ls_key-handle = '0500'.
+*
+*    lo_layout = lo_alv->get_layout( ).
+*    lo_layout->set_key( ls_key ).
+*
     lo_display = lo_alv->get_display_settings( ).
     lo_display->set_striped_pattern( if_salv_c_bool_sap=>true ).
+
+*     Register the Handler for HotSpot Event, as well as assigning this event to the local event object
     lo_events = lo_alv->get_event( ).
-    SET HANDLER lcl_hotspot_handler=>HANDLE_HOTSPOT_CLICK FOR lo_events.
+    SET HANDLER lcl_hotspot_handler=>HANDLE_HOTSPOT_CLICK FOR lo_events. "first object calls the method and the second raises the event
+    CLEAR sy-ucomm.
+    lo_alv->display( ).
   ENDMETHOD.
 ENDCLASS.
 
@@ -146,47 +152,18 @@ PERFORM generate_fcat.
 * Get Data from Class Table
 PERFORM GET_COGUNICLASS.
 
-*DEFINE A CALL METHOD TO THE FACTORY METHOD, CREATING THE ALV GRID'S FIRST INSTANCE
-TRY.
-  CALL METHOD cl_salv_table=>factory
-*    EXPORTING
-*      list_display   = IF_SALV_C_BOOL_SAP=>FALSE
-*      r_container    =
-*      container_name =
-    IMPORTING
-      r_salv_table   = lo_alv
-    CHANGING
-      t_table        = it_zcoguniclass
-      .
-    CATCH cx_salv_msg.
-ENDTRY.
-
-PERFORM get_alv_fcat TABLES it_fcat.
-lo_functions = lo_alv->get_functions( ).
-lo_functions->set_all( abap_true ).
-lo_alv->set_screen_status(
-  pfstatus      = 'ZCOG_UNI_STATUS'
-  report        = sy-repid
-*  set_functions = lo_alv->c_functions_all
-  ).
-
-lo_display = lo_alv->get_display_settings( ).
-lo_display->set_striped_pattern( if_salv_c_bool_sap=>true ).
-
-* Register the Handler for HotSpot Event, as well as assigning this event to the local event object
-lo_events = lo_alv->get_event( ).
-SET HANDLER lcl_hotspot_handler=>HANDLE_HOTSPOT_CLICK FOR lo_events. "first object calls the method and the second raises the event
-lo_alv->display( ).
-
+CALL METHOD lcl_hotspot_handler=>GENERATE_OUTPUT
+  EXPORTING
+    lv_fcat = it_fcat
+  CHANGING
+    lt_name = it_zcoguniclass
+  .
 
 
 *** MAIN IMPLEMENTATION DEFINITIONS ***
 
 
 FORM GET_COGUNICLASS.
-*  SELECT NAME, CLASS_SECTION, PROFESSOR, START_TIME, END_TIME, WEEK_DAY
-*    FROM ZCOGUNICLASS INTO TABLE @IT_ZCOGUNICLASS.
-
   SELECT
     a~NAME,
     a~CLASS_SECTION,
@@ -196,7 +173,7 @@ FORM GET_COGUNICLASS.
     a~WEEK_DAY,
     COUNT( DISTINCT b~student_num )
     FROM ZCOGUNICLASS AS a INNER JOIN ZCUREGIST AS b
-      ON a~name = b~classes GROUP BY
+      ON a~class_section = b~class_section GROUP BY
       a~NAME,
       a~CLASS_SECTION,
       a~PROFESSOR,
@@ -206,12 +183,15 @@ FORM GET_COGUNICLASS.
     INTO TABLE @IT_ZCOGUNICLASS.
 ENDFORM.
 
-FORM get_student. " FIX THE SELECTION (EITHER CHANGE THE TABLE PROPERTIES FOR KEYS OR LOOK AT THE SECTION AND STUDENT
-  SELECT a~NAME, a~CLASS_SECTION, b~STUDENT_NUM
-    FROM ZCOGUNISTUDENTS AS b INNER JOIN ZCUREGIST AS c ON b~STUDENT_NUM = c~STUDENT_NUM
-                              INNER JOIN ZCOGUNICLASS AS a ON a~NAME = c~CLASSES AND
-                                                              a~CLASS_SECTION = c~CLASS_SECTION
-      INTO TABLE @lt_zcuregist WHERE a~NAME = @WA_ZCOGUNICLASS-name.
+FORM get_student.
+  SELECT
+    a~NAME,
+    a~CLASS_SECTION,
+    b~STUDENT_NUM
+    FROM ZCOGUNISTUDENTS AS b INNER JOIN ZCUREGIST AS c
+      ON b~STUDENT_NUM = c~STUDENT_NUM INNER JOIN ZCOGUNICLASS AS a
+      ON a~CLASS_SECTION = c~CLASS_SECTION
+        INTO TABLE @IT_ZCUREGIST WHERE a~class_section = @WA_ZCOGUNICLASS-class_section.
 ENDFORM.
 
 FORM get_student_info.
@@ -222,9 +202,7 @@ ENDFORM.
 
 FORM get_alv_fcat TABLES p_it_fcat TYPE lvc_t_fcat.
   DATA :  lo_columns  TYPE REF TO cl_salv_columns_table,
-          lo_column_t TYPE REF TO cl_salv_column_table,
-          lo_column   TYPE REF TO cl_salv_column.
-  DATA    lo_cells    TYPE REF TO cl_salv_column_list.
+          lo_column_t TYPE REF TO cl_salv_column_table.
 
   lo_columns = lo_alv->get_columns( ).
   lo_alv->get_columns( )->set_optimize( abap_true ).
@@ -232,9 +210,13 @@ FORM get_alv_fcat TABLES p_it_fcat TYPE lvc_t_fcat.
     TRY.
 *      lo_column_t = CAST cl_salv_column_table( lo_alv->get_columns( )->get_column( wa_fcat-fieldname ) ).
       lo_column_t ?= lo_columns->get_column( wa_fcat-fieldname ).
-      lo_column_t->set_long_text( wa_fcat-coltext ).
-      lo_column_t->set_cell_type( if_salv_c_cell_type=>hotspot ).
-      lo_column_t->set_output_length( 40 ).
+      lo_column_t->set_long_text( wa_fcat-scrtext_l ).
+      lo_column_t->set_medium_text( wa_fcat-scrtext_m ).
+      lo_column_t->set_short_text( wa_fcat-scrtext_s ).
+      IF wa_fcat-hotspot = 'X'.
+        lo_column_t->set_cell_type( if_salv_c_cell_type=>hotspot ).
+      ENDIF.
+      lo_column_t->set_output_length( wa_fcat-outputlen ).
       CLEAR wa_fcat.
       CATCH cx_salv_not_found.
     ENDTRY.
@@ -249,25 +231,32 @@ FORM generate_fcat.
 * Field catalog it_fcat1 in association with the table zcuregist
   it_fcat1[] = VALUE lvc_t_fcat(
     ( Fieldname = 'CLASSNAME'
-      ref_table = 'LT_ZCUREGIST'
+      ref_table = 'IT_ZCUREGIST'
       coltext = 'Classes'
       col_pos = 1
       Outputlen = 40
-      HOTSPOT = 'X'
+      SCRTEXT_L = 'Classes'
+      SCRTEXT_M = 'Classes'
+      SCRTEXT_S = 'Classes'
     )
     ( FIELDNAME = 'CLASSSECTION'
-      ref_table = 'LT_ZCUREGIST'
+      ref_table = 'IT_ZCUREGIST'
       COLTEXT = 'SECTION'
       COL_POS = 2
       OUTPUTLEN = 20
-      HOTSPOT = ''
+      SCRTEXT_L = 'Section'
+      SCRTEXT_M = 'Section'
+      SCRTEXT_S = 'Section'
     )
     ( FIELDNAME = 'SNUM'
-      ref_table = 'LT_ZCUREGIST'
+      ref_table = 'IT_ZCUREGIST'
       COLTEXT = 'STUDENT NUM'
       COL_POS = 3
       OUTPUTLEN = 20
       HOTSPOT = 'X'
+      SCRTEXT_L = 'Student Number'
+      SCRTEXT_M = 'Stdnt Num'
+      SCRTEXT_S = 'S.Num'
     )
   ).
 * Field Catalog IT_FCAT in association with the table ZCOGUNICLASS
@@ -278,48 +267,63 @@ FORM generate_fcat.
       COL_POS = 1
       OUTPUTLEN = 40
       HOTSPOT = 'X'
+      SCRTEXT_L = 'Name'
+      SCRTEXT_M = 'Name'
+      SCRTEXT_S = 'Name'
     )
     ( FIELDNAME = 'CLASS_SECTION'
       ref_table = 'ZCOGUNICLASS'
       COLTEXT = 'SECTION'
       COL_POS = 2
       OUTPUTLEN = 20
-      HOTSPOT = ''
+      SCRTEXT_L = 'SECTION'
+      SCRTEXT_M = 'SECTION'
+      SCRTEXT_S = 'SECTION'
     )
     ( FIELDNAME = 'PROFESSOR'
       ref_table = 'ZCOGUNICLASS'
       COLTEXT = 'PROFESSOR'
       COL_POS = 3
       OUTPUTLEN = 20
-      HOTSPOT = ''
+      SCRTEXT_L = 'Professor'
+      SCRTEXT_M = 'Prof.'
+      SCRTEXT_S = 'Prof'
     )
     ( FIELDNAME = 'START_TIME'
       ref_table = 'ZCOGUNICLASS'
       COLTEXT = 'START TIME'
       COL_POS = 4
       OUTPUTLEN = 20
-      HOTSPOT = ''
+      SCRTEXT_L = 'Start Time'
+      SCRTEXT_M = 'S.Time'
+      SCRTEXT_S = 'Strt'
     )
     ( FIELDNAME = 'END_TIME'
       ref_table = 'ZCOGUNICLASS'
       COLTEXT = 'END TIME'
       COL_POS = 5
       OUTPUTLEN = 20
-      HOTSPOT = ''
+      SCRTEXT_L = 'End Time'
+      SCRTEXT_M = 'E.Time'
+      SCRTEXT_S = 'End'
     )
     ( FIELDNAME = 'WEEK_DAY'
       ref_table = 'ZCOGUNICLASS'
       COLTEXT = 'WEEK DAY'
       COL_POS = 6
       OUTPUTLEN = 20
-      HOTSPOT = ''
+      SCRTEXT_L = 'Week Day'
+      SCRTEXT_M = 'Days'
+      SCRTEXT_S = 'Days'
     )
     ( FIELDNAME = 'TOTAL_STUDENTS'
       ref_table = 'ZCOGUNICLASS'
       COLTEXT = 'TOTAL STUDENTS'
       COL_POS = 7
       OUTPUTLEN = 20
-      HOTSPOT = ''
+      SCRTEXT_L = 'Total Students'
+      SCRTEXT_M = 'Total St.'
+      SCRTEXT_S = 'T.St'
     )
    ).
 *  Field Catalog IT_FCAT2 in association with the table ZCOGUNISTUDENTS
@@ -329,47 +333,55 @@ FORM generate_fcat.
       COLTEXT = 'S.NUM'
       COL_POS = 1
       OUTPUTLEN = 20
-      HOTSPOT = ''
+      SCRTEXT_L = 'Student Number'
+      SCRTEXT_M = 'S.Num'
+      SCRTEXT_S = 'S.Num'
+
     )
     ( FIELDNAME = 'AGE'
       REF_TABLE = 'IT_ZCOGUNISTUDENTS'
       COLTEXT = 'AGE'
       COL_POS = 2
       OUTPUTLEN = 20
-      HOTSPOT = ''
+      SCRTEXT_L = 'Age'
+      SCRTEXT_M = 'Age'
+      SCRTEXT_S = 'Age'
     )
     ( FIELDNAME = 'GENDER'
       REF_TABLE = 'IT_ZCOGUNISTUDENTS'
       COLTEXT = 'GENDER'
       COL_POS = 3
       OUTPUTLEN = 20
-      HOTSPOT = ''
+      SCRTEXT_L = 'Gender'
+      SCRTEXT_M = 'Gender'
+      SCRTEXT_S = 'Gender'
     )
     ( FIELDNAME = 'RESIDENCY'
       REF_TABLE = 'IT_ZCOGUNISTUDENTS'
       COLTEXT = 'RESIDENCY'
       COL_POS = 4
       OUTPUTLEN = 20
-      HOTSPOT = ''
+      SCRTEXT_L = 'Residency'
+      SCRTEXT_M = 'Residency'
+      SCRTEXT_S = 'Resdc'
     )
     ( FIELDNAME = 'NAME'
       REF_TABLE = 'IT_ZCOGUNISTUDENTS'
       COLTEXT = 'NAME'
       COL_POS = 5
       OUTPUTLEN = 20
-      HOTSPOT = ''
+      SCRTEXT_L = 'Name'
+      SCRTEXT_M = 'Name'
+      SCRTEXT_S = 'Name'
     )
     ( FIELDNAME = 'LAST_NAME'
       REF_TABLE = 'IT_ZCOGUNISTUDENTS'
       COLTEXT = 'LAST NAME'
       COL_POS = 6
       OUTPUTLEN = 20
-      HOTSPOT = ''
+      SCRTEXT_L = 'Last Name'
+      SCRTEXT_M = 'L.Name'
+      SCRTEXT_S = 'LN'
     )
    ).
 ENDFORM.
-
-* STUFF TO FINISH:
-*   CHECK WHY THE FIELD NAME CHANGES WITH SIZE AND HOW TO FIX/OPTIMIZE IT
-*   CHECK IF THERES A WAY TO TAKE OUT THE LINK ON NONE HOTSPOT ELEMENTS
-*   SOLVE TABLE RELATIONSHIT ON ZCUREGIST/CHANGE THE SELECT LOGIC
