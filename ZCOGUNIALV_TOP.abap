@@ -37,9 +37,9 @@ DATA : it_zcoguniclass    TYPE STANDARD TABLE OF ty_zcoguniclass,
        wa_zcogunistudents TYPE ty_zcogunistudents,
        it_zcuregist       TYPE STANDARD TABLE OF ty_zcuregist,
        wa_zcuregist       TYPE ty_zcuregist,
-       it_fcat            TYPE lvc_t_fcat,
-       it_fcat1           TYPE lvc_t_fcat,
-       it_fcat2           TYPE lvc_t_fcat.
+       it_fcat_class      TYPE lvc_t_fcat, "Class field catalog
+       it_fcat_regist     TYPE lvc_t_fcat, "Registry field catalog
+       it_fcat_student    TYPE lvc_t_fcat. "Student field catalog
 
 *** OBJECTS TO GET/SET VARIABLES INTO OUR METHODS FOR OUR FACTORY METHOD ***
 
@@ -60,15 +60,12 @@ DATA: go_structdescr  TYPE REF TO cl_abap_structdescr,
       go_structdescr2 TYPE REF TO cl_abap_structdescr,
       go_table        TYPE REF TO cl_abap_tabledescr,
       go_table1       TYPE REF TO cl_abap_tabledescr,
-      go_table2       TYPE REF TO cl_abap_tabledescr,
-      count_offset TYPE i VALUE 1.
+      go_table2       TYPE REF TO cl_abap_tabledescr.
 
-DATA:   gv_class TYPE CHAR20 VALUE 'IT_COGUNICLASS',
-        gv_stdn  TYPE CHAR20 VALUE 'IT_ZCOGUNISTUDENTS',
-        gv_cureg TYPE CHAR20 VALUE 'IT_ZCUREGIST'.
-
-CONSTANTS: fieldcat_string TYPE string VALUE 'Classes,Section,Student Num.,Name,Section,Professor,Start Time,End Time,Week Day,Total Students,Student Number,Age,Gender,Residency,Name,Last Name',
-           to_hotspot      TYPE string VALUE 'SNUM,CNAME'.
+CONSTANTS: regist_fcat  TYPE string VALUE 'Classes,Section,Student Num.',
+           class_fcat   TYPE string VALUE 'Name,Section,Professor,Start Time,End Time,Week Day,Total Students,',
+           student_fcat TYPE string VALUE 'Student Number,Age,Gender,Residency,Name,Last Name',
+           to_hotspot   TYPE string VALUE 'SNUM,CNAME'.
 
 
 CLASS lcl_hotspot_handler DEFINITION.
