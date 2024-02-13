@@ -17,7 +17,7 @@ CLASS lcl_hotspot_handler IMPLEMENTATION. " currenly doesnt let me take the valu
           PERFORM get_student.
           IF it_zcuregist IS NOT INITIAL.
             "Display Student Data
-            CALL METHOD generate_output( EXPORTING lv_fcat = it_fcat1 CHANGING lt_name = it_zcuregist ).
+            CALL METHOD generate_output( EXPORTING lv_fcat = it_fcat_regist CHANGING lt_name = it_zcuregist ).
           ELSE.
             MESSAGE 'NO CLASS TO STUDENT DATA WAS RETRIEVED' TYPE 'I'.
           ENDIF.
@@ -29,7 +29,7 @@ CLASS lcl_hotspot_handler IMPLEMENTATION. " currenly doesnt let me take the valu
           PERFORM get_student_info.
           IF it_zcogunistudents IS NOT INITIAL." CHECK IF THE TABLE IS NOT INITIAL.
             "Display Student Data
-            CALL METHOD generate_output( EXPORTING lv_fcat = it_fcat2 CHANGING lt_name = it_zcogunistudents ).
+            CALL METHOD generate_output( EXPORTING lv_fcat = it_fcat_student CHANGING lt_name = it_zcogunistudents ).
           ELSE.
             MESSAGE 'NO STUDENT INFORMATION DATA WAS RETRIEVED' TYPE 'I'.
           ENDIF.
@@ -142,45 +142,32 @@ ENDFORM.
 
 
 *** GENERATE CUSTOM FIELD CATALOGS FOR THE INTERNAL TABLES ***
-
-FORM generate_fcat CHANGING lo_table TYPE REF TO cl_abap_tabledescr
-                            lo_structdescr TYPE REF TO cl_abap_structdescr
-                            lv_fcat TYPE lvc_t_fcat
-*                            ref_tab TYPE CHAR20
-                            im_table TYPE ANY TABLE.
-
-  DATA: ls_fcat TYPE lvc_s_fcat.
-
-  SPLIT fieldcat_string AT ',' INTO TABLE DATA(fcat_tab).
-  SPLIT to_hotspot      AT ',' INTO TABLE DATA(hs_tab).
-
-  TRY.
-    "RETRIEVES THE DATA FROM THE OUTPUT TABLES AND GETS THE INDIVIDUAL COMPONENT INFORMATION (name, length of field...)
-    lo_table ?= cl_abap_typedescr=>describe_by_data( im_table ).
-    lo_structdescr ?= lo_table->get_table_line_type( ).
-    CATCH cx_sy_move_cast_error.
-  ENDTRY.
-
-  LOOP AT lo_structdescr->components INTO DATA(ls_attr).
-
-    READ TABLE fcat_tab INTO DATA(ls_fc) INDEX count_offset.
-
-    ls_fcat-fieldname = ls_attr-name.
-*    ls_fcat-ref_table = ref_tab.
-    ls_fcat-coltext = ls_fc.
-    ls_fcat-col_pos = sy-tabix.
-    ls_fcat-Outputlen = ls_attr-length.
-    ls_fcat-scrtext_l = ls_fc.
-    ls_fcat-scrtext_m = ls_fc.
-    ls_fcat-scrtext_s = ls_fc.
-
-    READ TABLE hs_tab INTO DATA(ls_hs) WITH KEY table_line = ls_attr-name.
-    IF sy-subrc = 0.
-      ls_fcat-hotspot = 'X'.
-    ENDIF.
-
-    APPEND ls_fcat TO lv_fcat.
-    count_offset += 1.
-    CLEAR: ls_fcat, ls_fc, ls_attr, ls_hs.
-  ENDLOOP.
+FORM generate_fcat.
+  CALL FUNCTION 'ZFCAT_CREATE_FM'
+    EXPORTING
+      im_table    = it_zcoguniclass
+      im_fcat     = class_fcat
+      im_hotspot  = to_hotspot
+    IMPORTING
+      ex_lvc_fcat = it_fcat_class
+*     EX_SLIS_FCAT                =
+    .
+  CALL FUNCTION 'ZFCAT_CREATE_FM'
+    EXPORTING
+      im_table    = it_zcuregist
+      im_fcat     = regist_fcat
+      im_hotspot  = to_hotspot
+    IMPORTING
+      ex_lvc_fcat = it_fcat_regist
+*     EX_SLIS_FCAT                =
+    .
+  CALL FUNCTION 'ZFCAT_CREATE_FM'
+    EXPORTING
+      im_table    = it_zcogunistudents
+      im_fcat     = student_fcat
+      im_hotspot  = to_hotspot
+    IMPORTING
+      ex_lvc_fcat = it_fcat_student
+*     EX_SLIS_FCAT                =
+    .
 ENDFORM.
